@@ -1,132 +1,124 @@
 # dsh-loopback-serve
 
+[English](README.md) · [简体中文](README.zh.md)
+
 **Minimal, upgrade-safe remote access to the DeepSeek Harness (dsh) Web UI
 from your phone over Tailscale Serve — dsh never leaves loopback.**
 
-[English](README.md) · [简体中文](README.zh.md)
+---
 
-At a glance:
+## TL;DR for agents and humans
 
-- dsh web keeps listening on `127.0.0.1:3080` (its **intentional** secure
-  default — the maintainers refuse `--host 0.0.0.0` because an agent that can
-  run shell commands must not be exposed on a network).
-- Tailscale Serve terminates HTTPS from the tailnet and proxies back to that
-  loopback port.
-- Only **official, documented dsh flags** are used
-  (`--trusted-host`, `--no-open`, `--port`). No dsh source is patched, no
-  `node_modules` is edited → dsh `rc` upgrades are far less likely to break you.
+`dsh web` binds `127.0.0.1:3080` by design and **refuses `--host 0.0.0.0`**.
+To use the UI from a phone over Tailscale, keep dsh on loopback and let
+`tailscale serve` terminate HTTPS from your private tailnet and proxy to that
+port. Only official flags are used (`--trusted-host`, `--no-open`, `--port`);
+no dsh source or `node_modules` is touched, so rc upgrades are far less likely
+to break.
 
-## Why this exists
+## Key facts (machine-greppable)
 
-DeepSeek Harness (`dsh`) is a plugin-first agent harness. Its Web UI is a
-remote-code-execution surface by design — it can read files, run shell
-commands and write disk. The maintainers therefore:
+| Fact | Value |
+|------|-------|
+| What it serves | DeepSeek Harness (`dsh`) Web UI |
+| dsh bind | `127.0.0.1:3080` (loopback only, by design) |
+| `--host 0.0.0.0` | **rejected by dsh** (do not use) |
+| Remote access | Tailscale Serve (HTTPS on your tailnet) |
+| Public internet | **never** (never `tailscale funnel`) |
+| Required dsh flag | `--trusted-host <node>.tailXXXX.ts.net` |
+| Launcher | `bash start-dsh-web.sh` |
+| Hostname config | `local.conf` (gitignored) or `$DSH_TS_HOST` |
+| First-use auth | visit `?token=...` URL once → 30-day signed cookie |
+| Verified against | dsh `0.1.2-rc.1`, Tailscale `1.102.3`, Ubuntu 26.04 |
 
-- bind the UI to loopback (`127.0.0.1:3080`) by default, and
-- deliberately reject `--host 0.0.0.0`.
+## Repo layout
 
-So you cannot simply point a phone browser at `http://<ip>:3080`. You need a
-tunnel. The safest and least-moving-parts option is **Tailscale Serve**: it
-exposes `127.0.0.1:3080` on your *private tailnet* only, issues an HTTPS cert
-automatically, and never touches the public internet. The UI stays on
-loopback; Serve is the only off-host listener in front of it.
+```
+start-dsh-web.sh        one-shot launcher (stop → start with trust flag → print URLs)
+README.md               this file
+README.zh.md            简体中文
+docs/TROUBLESHOOTING.md auth/token internals, 401 vs 403, persistence, alternatives
+local.conf              generated at --configure; gitignored (holds hostname)
+LICENSE, SECURITY.md
+```
 
-There are fancier setups (Cloudflare Tunnel + Access, a separate zero-trust
-gateway plugin, bind `0.0.0.0` + a password wall + firewall scoping). Some are
-equally safe but heavier; one (`0.0.0.0`) is explicitly less safe. This
-project deliberately chooses the **loopback + Serve** shape because it keeps
-dsh's own attack surface minimal **and** survives dsh releases without you
-re-applying patches.
+## Why this architecture
+
+DeepSeek Harness is a plugin-first agent harness whose Web UI can read files,
+run shell commands, and write disk — a remote-code-execution surface. For that
+reason dsh binds to loopback and refuses `--host 0.0.0.0`. You therefore cannot
+use a phone browser straight at `http://<ip>:3080`; you need a tunnel.
+
+**Tailscale Serve** is the least-moving-parts, tailnet-only option: it
+terminates HTTPS, exposes only to your own devices, and proxies back to the
+loopback port. The UI stays on loopback (smallest dsh attack surface) and dsh
+internals stay untouched (rc upgrades don't break you). Cleaner/faster
+alternatives exist (Cloudflare Tunnel + Access, zero-trust gateway plugin) but
+are heavier; binding `0.0.0.0` + a password wall is explicitly less safe.
 
 ## Architecture
 
 ```
-phone/desktop (browser, on your tailnet)
-        │  https://<node>.tailXXXX.ts.net/   (TLS terminated by Serve)
-        ▼
-Tailscale Serve (terminates HTTPS, injects nothing here)
-        │  plain HTTP proxy
-        ▼
-dsh web on 127.0.0.1:3080   (the ONLY listener that can touch dsh)
+phone/desktop browser (tailnet)
+      │  https://<node>.tailXXXX.ts.net/      (TLS by Serve)
+      ▼
+Tailscale Serve  (terminates HTTPS; no header injection here)
+      │  plain HTTP proxy
+      ▼
+dsh web 127.0.0.1:3080   (the ONLY listener that can touch dsh)
 ```
-
-The one extra flag dsh needs is `--trusted-host <node>.tailXXXX.ts.net` so its
-`/api` request-trust fence accepts the tailnet Origin/Host instead of 403ing it.
-
-## Contents
-
-- [`start-dsh-web.sh`](start-dsh-web.sh) — one-shot launcher: stops a previous
-  instance, starts dsh web with the trust flag, prints the local URL **and** the
-  phone's FIRST-visit URL (token → 30-day cookie exchange).
-- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — the auth/token
-  mechanism, the 401 vs 403 distinction, and how to persist trusted-host.
-- `local.conf` (generated, gitignored) — holds your tailnet hostname.
 
 ## Prerequisites
 
-- `dsh` installed and on `PATH` (a Web profile, `~/.dsh`, present)
-- Tailscale on the host: logged in, node on your tailnet, **MagicDNS enabled**
-- A `serve` route from `https://<node>.tailXXXX.ts.net/` to `127.0.0.1:3080`
-- Phone / other machine on the **same tailnet**
+- `dsh` on `PATH`, with a Web profile (`~/.dsh` present)
+- Tailscale: logged in, node on your tailnet, **MagicDNS enabled**
+- A `serve` route `https://<node>.tailXXXX.ts.net/` → `127.0.0.1:3080`
+- Phone / other device on the **same tailnet**
 
 ## Quick start
 
 ```bash
-# 0. One-time: remember or configure your tailnet hostname
-#    (find it with: tailscale status  →  self node:  <name>.<tail>.ts.net)
+# 0. Configure tailnet hostname once (find it via `tailscale status` → self node)
 bash start-dsh-web.sh --configure '<node>.tailXXXX.ts.net'
 
-# 1. Make sure Serve maps 3080 (needs sudo once; 443)
+# 1. Serve maps 3080 (needs sudo once, 443)
 sudo tailscale serve --bg 3080
-#    verify:
-tailscale serve status
+tailscale serve status          # verify
 
 # 2. Launch dsh web for remote use
 bash start-dsh-web.sh
-#    prints:
-#      Local access : http://127.0.0.1:3080/?token=...
-#      Phone FIRST visit (exchanges token for a 30-day cookie):
-#        https://<node>.tailXXXX.ts.net/?token=...
+#   prints:
+#     Local access : http://127.0.0.1:3080/?token=...
+#     Phone FIRST visit (exchanges token for a 30-day cookie):
+#       https://<node>.tailXXXX.ts.net/?token=...
 ```
 
-On the phone (browser, same tailnet):
+Phone (browser, tailnet): open the `?token=...` URL once → dsh mints a signed,
+30-day cookie (persisted across dsh restarts). After that, `https://<node>.…/`
+just works.
 
-1. Open the `https://<node>.tailXXXX.ts.net/?token=...` URL once → dsh mints a
-   signed cookie **valid 30 days**, persisted across dsh restarts.
-2. From then on, just open `https://<node>.tailXXXX.ts.net/`.
-
-> After the cookie is set, dsh itself can be stopped/restarted freely and your
-> phone keeps working until the cookie expires (or you use a new browser).
-
-### Non-privileged port (optional)
-
-If you don't want `sudo` (443):
+### Non-privileged port (no sudo)
 
 ```bash
-tailscale serve --bg --https 8443 http://127.0.0.1:3080
-# your URL becomes https://<node>.tailXXXX.ts.net:8443/
+tailscale serve --bg --https 8443 http://127.0.0.1:3080   # URL uses :8443
 ```
 
-## Security notes
+## Security
 
-- Serve exposes the UI to your **own tailnet devices only** — not the public
-  internet. That is already one order stronger than a public tunnel.
-- **Never** use `tailscale funnel` for this. dsh web can run shell commands and
-  write files; exposing it to the public internet is remote code execution for
-  anyone who reaches the URL.
-- The phone's 30-day cookie is the effective access boundary after the first
-  visit. Treat it accordingly; revoke by deleting the browser cookie.
-- dsh's `/api` fence is an anti-DNS-rebinding / cross-origin guard, **not** an
-  authentication layer. Serve's private tailnet IS your network-level auth.
-  If you need per-identity authorization, consider `dsh-one-gateway` /
-  `dsh-auth-tailscale` (see TROUBLESHOOTING §Alternatives), which read the
-  `Tailscale-User-Login` header Serve injects.
+- Serve exposes only to your own tailnet — not the public internet.
+- **Never** `tailscale funnel` — that exposes a shell-capable UI to the world.
+- After first visit, the 30-day cookie is the access boundary; revoke = delete
+  cookie.
+- dsh's `/api` fence is anti-DNS-rebinding / cross-origin, **not** auth. Serve's
+  private tailnet is your network-level auth. For per-identity auth see
+  `docs/TROUBLESHOOTING.md → Alternatives` (`dsh-one-gateway`,
+  `dsh-auth-tailscale`, read Serve's `Tailscale-User-Login` header).
+- Before pushing a change, scan for real identifiers per `SECURITY.md`.
 
-## Requirements / environment
+## Requirements
 
-- Linux (tested on Ubuntu 26.04 Desktop), but the pattern is cross-platform;
-  Tailscale + dsh web behave the same on macOS/WSL2.
-- Node.js (dsh supplies its own runtime usually).
+- Linux (verified Ubuntu 26.04 Desktop); pattern is cross-platform (macOS/WSL2).
+- Node.js (dsh usually supplies its runtime).
 
 ## License
 
@@ -134,8 +126,10 @@ MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
 
-DeepSeek Harness is a developer preview. **Everything here is verified against
-a specific dsh `rc` version** and dsh APIs change fast. Before trusting this
-after a dsh upgrade, re-check: does `dsh web` still boot, does the trust flag
-still work, does the phone still load. See `docs/TROUBLESHOOTING.md` for the
-verification checklist.
+DeepSeek Harness is a developer preview. Everything here is verified against a
+specific dsh rc version and dsh APIs change fast. After an upgrade, re-check the
+checklist in `docs/TROUBLESHOOTING.md`.
+
+## Contributing
+
+Open an issue or PR. Keep change-scans per `SECURITY.md`.
