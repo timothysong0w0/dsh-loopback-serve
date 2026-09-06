@@ -37,7 +37,7 @@ to break.
 start-dsh-web.sh        one-shot launcher (stop → start with trust flag → print URLs)
 README.md               this file
 README.zh.md            简体中文
-docs/TROUBLESHOOTING.md auth/token internals, 401 vs 403, persistence, alternatives
+docs/TROUBLESHOOTING.md auth/token internals, 401 vs 403, persistence, alternatives, boot autostart
 local.conf              generated at --configure; gitignored (holds hostname)
 LICENSE, SECURITY.md
 ```

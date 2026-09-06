@@ -36,7 +36,7 @@ Serve,dsh 永不离开本机回环。**
 start-dsh-web.sh        一键启动器(停旧→带信任参数启动→打印 URL)
 README.md               本文件(英文)
 README.zh.md            简体中文
-docs/TROUBLESHOOTING.md 认证/token 内幕、401 vs 403、持久化、备选方案
+docs/TROUBLESHOOTING.md 认证/token 内幕、401 vs 403、持久化、备选方案、开机自启
 local.conf              --configure 生成;gitignored(存主机名)
 LICENSE, SECURITY.md
 ```

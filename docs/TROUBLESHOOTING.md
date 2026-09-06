@@ -127,6 +127,76 @@ Generally you only need ONE remote-access mechanism. This project is the
 minimal, durable one; reach for the zero-trust gateway only if you need
 per-identity authorization or multi-user sharing.
 
+## Running dsh web at boot (systemd user service)
+
+`tailscale serve` runs for as long as `tailscaled` is up, but **dsh web is a
+normal process and does NOT start itself at boot.** If you want the phone to
+work right after the machine boots, run dsh web under systemd in *user* mode.
+
+> Prerequisite: a **user** systemd service needs `linger` so it starts at boot
+> without requiring you to log in:
+> ```bash
+> loginctl enable-linger "$USER"     # one-time
+> loginctl show-user "$USER" | grep -i linger   # → Linger=yes
+> ```
+
+Example unit — `~/.config/systemd/user/dsh-web.service`:
+
+```ini
+[Unit]
+Description=DeepSeek Harness (dsh) web UI over Tailscale Serve
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=%h
+WorkingDirectory=%h/.dsh
+# dsh is a node script; point directly at the node binary + bin.js so the
+# shebang resolves regardless of PATH. Replace <NODE_BIN>, <BIN_JS> and
+# <node>.tailXXXX.ts.net with your real paths/hostname.
+ExecStart=<NODE_BIN> <BIN_JS> web --trusted-host <node>.tailXXXX.ts.net --no-open --port 3080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+Register and start it:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now dsh-web.service
+```
+
+Check it came up and read the current token from the journal:
+
+```bash
+systemctl --user status dsh-web.service          # → active (running)
+journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*' | tail -1
+```
+
+### Stop / restart when it misbehaves
+
+If dsh web wedges, the phone times out, or you need a fresh token:
+
+```bash
+# stop (dsh web no longer answers; phone will fail to load until restart)
+systemctl --user stop dsh-web.service
+# start again (after a fix, or to mint a new token)
+systemctl --user start dsh-web.service
+# or restart atomically
+systemctl --user restart dsh-web.service
+# disable boot autostart entirely (survives reboot as "not running")
+systemctl --user disable --now dsh-web.service
+```
+
+`Restart=on-failure` already relaunches it automatically if it crashes; use
+`stop`/`start` only when you need manual control. After a restart, the token
+changes — re-read it from the journal and have the phone do the `?token=`
+exchange again if its 30-day cookie is gone.
+
 ## After every dsh upgrade — re-verify
 
 DeepSeek Harness is a developer preview with breaking changes between rc
