@@ -1,0 +1,13 @@
+# Long-lived dsh process artifacts (never commit)
+*.pid
+*.log
+
+# Keep sensitive local values out of git
+# (see docs/TROUBLESHOOTING.md: you can persist trusted-host via cordis.patch.yml
+#  or pass it on the CLI; do NOT commit a token URL or local path)
+.env
+local.conf
+
+# Editor noise
+.DS_Store
+*.swp
