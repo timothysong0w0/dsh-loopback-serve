@@ -116,6 +116,36 @@ journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*
 (`start-dsh-web.sh` 启动器则会直接打印。)每次启动 dsh web 都会生成新
 token,重启后要重读。完整认证模型见 `docs/TROUBLESHOOTING.md`。
 
+### 日常操作(启动 / 停止 / 重启)
+
+dsh web 有两种跑法——启动脚本,和 systemd 开机自启服务。按你用的那个来:
+
+**A. systemd 用户服务(开机自启)**
+
+```bash
+systemctl --user status  dsh-web.service    # 是否在跑?(→ active)
+systemctl --user restart dsh-web.service    # 重启(会生成新 token)
+systemctl --user stop    dsh-web.service    # 停止(手机直到启动前都连不上)
+systemctl --user start   dsh-web.service    # 再次启动
+systemctl --user disable --now dsh-web.service   # 关闭开机自启
+journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*' | tail -1   # 当前 token
+```
+
+服务配置了 `Restart=on-failure`(崩溃自动拉起),上面的手动命令是给你主动
+控制或换新 token 用的。
+
+**B. 启动脚本(手动,无自启)**
+
+```bash
+bash start-dsh-web.sh            # 启动(打印本机+手机 URL 及 token)
+pkill -f "dsh web --trusted-host <节点>.tailXXXX.ts.net"   # 停止
+```
+
+**每次重启之后**
+
+token 会变。重读它(`journalctl` 或脚本输出),并让手机/浏览器**只在**
+30 天 cookie 已过期、或换了新浏览器时,再重新做一次 `?token=` 兑换。
+
 ### 非特权端口(免 sudo)
 
 ```bash

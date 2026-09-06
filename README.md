@@ -124,6 +124,40 @@ journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*
 start mints a new token, so re-read it after any restart. See
 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for the full auth model.
 
+## Daily operations (start / stop / restart)
+
+Both ways to run dsh web — the launcher script and the systemd autostart
+service — and how to control each. Pick the one you use.
+
+### Option A: systemd user service (autostart at boot)
+
+If you set up the boot service (`dsh-web.service`), this is the everyday path:
+
+```bash
+systemctl --user status  dsh-web.service   # is it running? (→ active)
+systemctl --user restart dsh-web.service   # restart (mints a NEW token)
+systemctl --user stop    dsh-web.service   # stop (phone fails until start)
+systemctl --user start   dsh-web.service   # start again
+systemctl --user disable --now dsh-web.service   # turn OFF boot autostart
+journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*' | tail -1   # current token
+```
+
+`Restart=on-failure` relaunches it automatically on a crash; use the manual
+commands only when you want control or a fresh token.
+
+### Option B: launcher script (manual, no autostart)
+
+```bash
+bash start-dsh-web.sh            # start (prints local + phone URLs with token)
+pkill -f "dsh web --trusted-host <node>.tailXXXX.ts.net"   # stop
+```
+
+### After any restart
+
+The token changes. Re-read it (`journalctl ...` above, or the script's output)
+and have the phone/browser do the `?token=` exchange again **only if** its
+30-day cookie has expired or it's a new browser.
+
 ### Non-privileged port (no sudo)
 
 ```bash
