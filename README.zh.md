@@ -92,6 +92,30 @@ bash start-dsh-web.sh
 手机(浏览器,tailnet):打开 `?token=...` URL **一次** → dsh 签发 30 天签名
 cookie(重启 dsh 仍有效)。之后直接开 `https://<节点>.…/` 即可。
 
+### 本机浏览器同样要先认证一次
+
+浏览器认证对**任何来源**都生效,包括本机自己的 `127.0.0.1:3080`。如果你
+裸开 `127.0.0.1:3080` 看到 `dsh web authentication required; reopen the URL
+printed by dsh web`,这正常——必须先带 token 访问一次:
+
+```
+http://127.0.0.1:3080/?token=<当前token>
+```
+
+之后裸开 `http://127.0.0.1:3080/` 该浏览器 30 天内直接可用。
+
+### 查询当前 token(含 systemd 自启场景)
+
+dsh web 由 systemd 用户服务(`dsh-web.service`)自启时,URL 不打在终端,
+而是进 journal。从这里读:
+
+```bash
+journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*' | tail -1
+```
+
+(`start-dsh-web.sh` 启动器则会直接打印。)每次启动 dsh web 都会生成新
+token,重启后要重读。完整认证模型见 `docs/TROUBLESHOOTING.md`。
+
 ### 非特权端口(免 sudo)
 
 ```bash

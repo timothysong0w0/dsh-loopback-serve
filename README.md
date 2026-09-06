@@ -97,6 +97,33 @@ Phone (browser, tailnet): open the `?token=...` URL once → dsh mints a signed,
 30-day cookie (persisted across dsh restarts). After that, `https://<node>.…/`
 just works.
 
+### First visit applies to the LOCAL browser too
+
+The browser-auth applies to **any** origin, including `127.0.0.1:3080` on the
+machine itself. If you open `127.0.0.1:3080` and get
+`dsh web authentication required; reopen the URL printed by dsh web`, that's
+normal — you must first visit once **with** the token:
+
+```bash
+# one-off token exchange (localhost)
+http://127.0.0.1:3080/?token=<CURRENT_TOKEN>
+```
+
+Then plain `http://127.0.0.1:3080/` works for 30 days on that browser.
+
+### Getting the current token (incl. systemd autostart)
+
+When dsh web runs under the systemd user service (`dsh-web.service`) the URL is
+not printed to your terminal — it goes to the journal. Read it from there:
+
+```bash
+journalctl --user -u dsh-web.service --no-pager | grep -oE 'token=[A-Za-z0-9_-]*' | tail -1
+```
+
+(The `start-dsh-web.sh` launcher prints it directly instead.) Every dsh web
+start mints a new token, so re-read it after any restart. See
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for the full auth model.
+
 ### Non-privileged port (no sudo)
 
 ```bash
